@@ -38,11 +38,24 @@ def draw_maze(window, maze, tile):
             if cell & R:  # right wall exists
                 draw_rect(window, px + tile - WALL_THICK, py, WALL_THICK, tile, WALL_COLOR)
 
-def valid_gum_cells(maze, tile):
-    """Return a list of valid grid cells for gum collectibles."""
-    cells = []
-    for y in range(len(maze)):
-        for x in range(len(maze[0])):
-            if maze[y][x] != 15:
-                cells.append((x, y))
-    return cells
+def draw_collectibles(window, gums, super_gums, gum_img, super_gum_img, tile, padding, hud_height):
+    
+    for gum in gums:
+        if gum.visible:
+            # Center the image inside the tile
+            offset_x = (tile - gum_img.get_width()) // 2
+            offset_y = (tile - gum_img.get_height()) // 2
+            draw_x = gum.x * tile + padding + offset_x
+            draw_y = gum.y * tile + hud_height + padding + offset_y
+            window.blit(gum_img, (draw_x, draw_y))
+    
+    for sgum in super_gums:
+        if sgum.visible:
+            # Same centering for super gums
+            offset_x = (tile - super_gum_img.get_width()) // 2
+            offset_y = (tile - super_gum_img.get_height()) // 2
+            draw_x = sgum.x * tile + padding + offset_x
+            draw_y = sgum.y * tile + hud_height + padding + offset_y
+            window.blit(super_gum_img, (draw_x, draw_y))
+
+
