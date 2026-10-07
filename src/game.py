@@ -9,14 +9,20 @@ import pygame
 import time
 from enum import Enum, auto
 
+
 from .ui import menus
 from .ui.hud import draw_hud
+from .ui.renderer import draw_maze, draw_rect, draw_collectibles
 from .ui.renderer import draw_maze, draw_rect, draw_collectibles
 from .systems import highscore
 from .systems.maze_integration import create_maze
 from .systems.config_loader import load_config
 from .entities.player import Player
 from .entities.collectible import Collectible
+
+
+# oussama
+from .entities.ghost import Ghost
 
 class GameState(Enum):
     MENU = auto()
@@ -29,7 +35,7 @@ class GameState(Enum):
 
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
-FPS = 48
+FPS = 40
 BACKGROUND_COLOR = (0, 0, 0)
 CONFIG_FILE = "config.json"
 HIGHSCORE_FILE = "data/highscores.json"
@@ -73,6 +79,27 @@ def find_middle_spawn(maze):
                         return nx, ny
     return start_x, start_y
 
+def eat_collectibles(pacman, gums, super_gums, TILE) -> int:
+    """Check if Pac-Man has eaten any collectibles and update the score."""
+    cell_x = (pacman.pixel_x + TILE // 2) // TILE
+    cell_y = (pacman.pixel_y + TILE // 2) // TILE
+
+    points = 0
+
+    # this part for the for pac-gums:
+    for gum in gums:
+        if  gum.visible and gum.x == cell_x and gum.y == cell_y:
+            gum.visible = False
+            points += gum.points
+
+    # and this part for the super-gums
+    for s_gum in super_gums:
+        if s_gum.visible and s_gum.x == cell_x and s_gum.y == cell_y:
+            s_gum.visible = False
+            points += s_gum.points
+
+    return points
+
 
 def run() -> None:
     config = load_config(CONFIG_FILE)
@@ -80,7 +107,7 @@ def run() -> None:
 
     if not config or highscores is None:
         return
-    
+
     pygame.init()
     window = create_window(WINDOW_WIDTH, WINDOW_HEIGHT)
     pygame.display.set_caption("PAC-MAN")
@@ -106,6 +133,11 @@ def run() -> None:
     pacgum = assets["pacgum"]
     super_pacgum = assets["super-pacgum"]
 
+    TILE = 40
+    HUD_HEIGHT = 60
+    PADDING = 16
+
+    # oussama
 
     play_x = centered_x(play_image, WINDOW_WIDTH)
     play_y = 275
@@ -118,14 +150,7 @@ def run() -> None:
     back_x = centered_x(back_image, WINDOW_WIDTH)
     back_y = 520
 
-
-
     current_state = GameState.MENU
-
-    TILE = 40
-    HUD_HEIGHT = 60
-    PADDING = 16
-
 
     score = 0 #get_score()  # Placeholder for actual score retrieval logic
     lives = config["lives"]
@@ -155,6 +180,12 @@ def run() -> None:
                         maze = create_maze(level_data["width"], level_data["height"], level_data["seed"])
                         new_w = level_data["width"]  * TILE + PADDING * 2
                         new_h = level_data["height"] * TILE + HUD_HEIGHT + PADDING * 2
+
+                        ghost_red = Ghost(1, 1, TILE, "red")
+                        ghost_cyan = Ghost(level_data["width"] - 2, 1, TILE, "cyan")
+                        ghost_orange = Ghost(1, level_data["height"] - 2, TILE, "orange")
+                        ghost_pink = Ghost(level_data["width"] - 2,level_data["height"] - 2,TILE,"pink")
+
                         window = create_window(new_w, new_h)
                         start_x, start_y = find_middle_spawn(maze)
                         pacman = Player(start_x, start_y, TILE)
@@ -183,7 +214,7 @@ def run() -> None:
                 elif current_state == GameState.GAME_OVER:
                     if point_in_box(px, py, save_x, save_y, save_image.get_width(), save_image.get_height()):
                         existing_names = [dic["name"] for dic in highscores]
-                        
+
                         if len(player_name) < 2:
                             error_message = "NAME MUST BE AT LEAST 2 LETTERS!"
                         elif player_name in existing_names:
@@ -234,7 +265,6 @@ def run() -> None:
                         window = create_window(new_w, new_h)
                         current_state = GameState.PLAYING
 
-
         if current_state == GameState.MENU:
             window.blit(background_image, (0, 0))
             window.blit(header_image, (150, -150))
@@ -244,39 +274,56 @@ def run() -> None:
             window.blit(exit_image,      (exit_x,  exit_y))
 
         elif current_state == GameState.PLAYING:
-            now = time.time()
+            now = time.time() #10:0
             time_since_start = now - level_start_time
 
-            if time_since_start < 3.0:
+            if time_since_start < 1.0:
                 # --- WE ARE STILL COUNTING DOWN ---
                 window.fill(BACKGROUND_COLOR)
                 level = font.render(f"level: {current_level}", True, (212, 149, 1))
                 window.blit(level, (centered_x(level, new_w), centered_y(level, new_h)))
-                
+
                 seconds_left = 3 - int(time_since_start)
                 count_down = font.render(f"{seconds_left}", True, (212, 149, 1))
                 window.blit(count_down, (centered_x(count_down, new_w), centered_y(count_down, new_h + 100)))
 
                 last_second_tick = now 
-                
+
             else:
                 # --- COUNTDOWN FINISHED, PLAY THE GAME! ---
                 pacman.update(maze, TILE)
+
+                ## oussama issfoula ##
+                points_won = eat_collectibles(pacman, gums, super_gums, TILE)
+                score = score + points_won
+
                 if now - last_second_tick >= 1.0:
                     level_time_remaining = max(0, level_time_remaining - 1)
                     last_second_tick = now
-                    
+
                 timer = level_time_remaining
                 window.fill(BACKGROUND_COLOR)
                 draw_maze(window, maze, TILE)
                 draw_collectibles(window, gums, super_gums, pacgum, super_pacgum, TILE, PADDING, HUD_HEIGHT)
                 draw_hud(window, font, current_level, score, lives, smallpac, timer)
                 pacman.draw(window, PADDING, HUD_HEIGHT, TILE)
-                
+
+                # oussama
+                ghost_red.draw(window, PADDING, HUD_HEIGHT, TILE)
+                ghost_red.update(maze, TILE)
+
+                ghost_cyan.draw(window, PADDING, HUD_HEIGHT, TILE)
+                ghost_cyan.update(maze, TILE)
+
+                ghost_orange.draw(window, PADDING, HUD_HEIGHT, TILE)
+                ghost_orange.update(maze, TILE)
+
+                ghost_pink.draw(window, PADDING, HUD_HEIGHT, TILE)
+                ghost_pink.update(maze, TILE)
+                ##33
                 if timer <= 0:
                     current_state = GameState.GAME_OVER
                     player_name = ""
-            
 
         elif current_state == GameState.HIGH_SCORES:
             window.blit(scores_background, (0, 0))
@@ -310,7 +357,7 @@ def run() -> None:
             if error_message != "":
                 name_error = font.render(error_message, True, (255, 0, 0))
                 window.blit(name_error, (centered_x(name_error, new_w), centered_y(name_error, new_h + 300)))
-        
+
         elif current_state == GameState.PAUSED:
             continue_x = centered_x(continue_image, new_w)
             continue_y = centered_y(continue_image, new_h)
@@ -321,8 +368,6 @@ def run() -> None:
             window.blit(continue_image, (continue_x, continue_y) )
             window.blit(menu_image, (menu_x, menu_y) )
 
-            
-
         pygame.display.flip()
 
         elapsed = time.time() - frame_start
@@ -331,6 +376,3 @@ def run() -> None:
             time.sleep(sleep_time)
 
     pygame.quit()
-
-
- 
